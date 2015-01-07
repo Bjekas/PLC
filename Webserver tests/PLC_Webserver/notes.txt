@@ -1,0 +1,20 @@
+********************
+Done
+********************
+OB121 - Programming erros
+OB80  - Time error interrupt
+OB40  - Hardware interrupt
+OB82  - Diagnostic error interrupt
+OB83  - Pull or plug of modules
+OB122 - IO acess error
+
+********************
+To do
+********************
+Tracking tool
+Tracking statistics
+
+Melhorar ProgErr á semelhança do IOErr
+fazer FB p/ diagnostico no webserver
+mostrar codigos (toaster)
+opção para salvar p/ ficheiro

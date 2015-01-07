@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Javascript Example</title>
+    <script src="jquery-2.1.1.js"></script>
+    </head>
+    <body>
+        <label id="C0">...</label>
+	    <br>
+	    <!-- AWP_In_Variable Name='"testeDB".C0' --> 
+		<form method="post">
+			<p>C0: <input name='"testeDB".C0' type="text"> <input 
+			type="submit" value="Write to PLC"></p>
+		</form>	
+		<label id="C1">...</label>
+	    <br>
+		<!-- AWP_In_Variable Name='"testeDB".C1' --> 
+		<form method="post">
+			<p>C1: <input name='"testeDB".C1' type="hidden" value="1">
+            <input type="submit" value="Write to PLC"></p>
+		</form>	
+    </body>
+ 
+	<script>
+	
+	$(document).ready(function(){    
+        $.ajaxSetup({ cache: false });
+        setInterval(function() {
+            $("#C0").load("Data.html #C0");
+			$("#C1").load("Data.html #C1");
+        },1000);
+	});
+	</script>
+ 
+</body>
+</html>

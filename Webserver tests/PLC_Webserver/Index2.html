@@ -1,0 +1,73 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>JavaScript Example</title>
+        <script src="jquery-2.1.1.js"></script>
+        <link href="toastr.css" rel="stylesheet"/>
+        <script src="toastr.js"></script>
+    </head>
+    <body>
+        PLC Index:<br><label id="C0"></label><br>
+		GID:<br><label id="C1"></label><br>
+        BSM:<br><label id="C2"></label><br>
+        Position:<br><label id="C3"></label><br>
+        Destination:<br><label id="C4"></label><br>
+	    <br>
+		
+    </body>
+ 	
+	<script>
+	var $div = $('<div>');
+    var newBag = true;
+	var PLCIdx, GID, BSM, Position, Destination;
+	
+	$(document).ready(function(){
+        $.ajaxSetup({ cache: false });
+        setInterval(function(){
+
+            $div.load('Data22.html #PLCIdx', function(){PLCIdx = $(this).text();});
+            $div.load('Data22.html #GID', function(){GID = $(this).text();});
+            $div.load('Data22.html #BSM', function(){BSM = $(this).text().replace("'",'').replace("'",'').replace("'",'').replace("'",'').replace("'",'').replace("'",'').replace("'",'').replace("'",'');});
+            $div.load('Data22.html #Position', function(){Position = $(this).text();});
+            $div.load('Data22.html #Destination', function(){Destination = $(this).text();});
+
+
+
+
+            if ((PLCIdx != 0)&(!newBag)) {
+                newBag = true;
+                var msg;
+                msg = "PLCIdx: " + PLCIdx + '<br>' +
+                      "GID: " + GID + '<br>' +
+                      "BSM: " + BSM + '<br>' +
+                      "Position: " + Position + '<br>' +
+                      "Destination: " + Destination;
+
+                toastr.options = {
+                    "closeButton": false,
+                    "debug": false,
+                    "positionClass": "toast-top-left",
+                    "onclick": null,
+                    "showDuration": "300",
+                    "hideDuration": "1000",
+                    "timeOut": "300000",
+                    "extendedTimeOut": "1000",
+                    "showEasing": "swing",
+                    "hideEasing": "linear",
+                    "showMethod": "fadeIn",
+                    "hideMethod": "fadeOut"
+                }
+
+                toastr.success("New bag", msg);
+            }
+            if (PLCIdx == 0){
+                newBag = false;
+            }
+        },1000);
+	});
+
+	</script>
+ 
+</body>
+</html>
