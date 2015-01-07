@@ -1,0 +1,310 @@
+FUNCTION FC 299 : VOID
+TITLE =Stationsstaus aus PNIODIAG Datenbereich Filtern, DP und PN 
+//Filter Station status out of global DB from PNIODIAG function 
+//reading from Siemens PNIODiag V1.82
+//
+//Cylcetime  on  314-2PN/DP FW3.3.6  approx. 0.8 ms
+//
+//Zykluszeit auf 314-2PN/DP FW3.3.6  ca. 0.8 ms
+//
+//
+//System-Nr:
+//First count the DP-Mastersystems, then IO-Systems in order of ther number.
+//Example:
+//DP-Mastersystem 2 = Systemnumber 1
+//DP-Mastersystem 5 = Systemnumber 2
+//IO-System     101 = Systemnumber 3
+//IO-System     115 = Systemnumber 4
+//
+//
+//Ermittlung der Systemnummer: 
+//In der Reihenfolge erst DP-Mastersysteme, dann die IO-Systeme.
+//
+//Beispiel:
+//DP-Mastersystem 2 = Systemnumber 1
+//DP-Mastersystem 5 = Systemnumber 2
+//IO-System     101 = Systemnumber 3
+//IO-System     115 = Systemnumber 4
+AUTHOR : IBNS
+FAMILY : DIAGNOSE
+NAME : DIAG_FIL
+VERSION : 1.8
+
+
+VAR_INPUT
+  SYSTEM_NR : INT ;	//Systemnummer, Reihenfolge PD-PN beachten / Number of system, sequence sensitive
+  PNIODiag_GLOBDB : INT ;	//Nummer Global-DB des PNIODIAG / No. Global DB of PNIODIAG function
+  DIAG_DB : UDT 299;	//DIAG DB mit gefilterter Diagnose / DIAG DB with filtered diagnostic
+END_VAR
+VAR_OUTPUT
+  ErrorDB : BOOL ;	//Fehler: PNDIAG_DB fehlt oder zu kurz /  PNDIAG_DB missing or to short
+  ErrorsSysNr : BOOL ;	//Fehler: Systemnummer nicht erlaubt /  SystemNo. not allowed [1..48]
+END_VAR
+VAR_TEMP
+  RetValSFC : INT ;	
+  DB_LENGTH : WORD ;	
+  GLOBDBNr : WORD ;	//Gobal-DB in word
+  WRITE_PROT : BOOL ;	
+  LaengeDB : INT ;	//Erforderliche Global-DB Länge / necessary length of global DB
+  System_Start : INT ;	//Startadresse für Systemnummer / Start adress of system no.
+  Info_PTR_NP : DWORD ;	//Pointer auf DIAG_INFO "not Present" / Pointer local area DIAG_INFO "not Pres"
+  Info_PTR_ER : DWORD ;	//Pointer auf DIAG_INFO "Error" / Pointer local area DIAG_INFO "Error"
+  Info_PTR_MSG : DWORD ;	//Pointer auf DIAG_INFO "MSG" / Pointer local area DIAG_INFO "MSG" (effected)
+  LoopCNTR : INT ;	//Schleifenzähler
+  DataType : INT ;	
+  DataLoop : INT ;	
+  DataDBNo : INT ;	
+  DataArea : INT ;	
+  DataAdress : INT ;	
+  P_Any_Diag : ANY ;	//Anypointer zu Diagnosedaten / anypointer target diagdata
+  DIAG_INFO : UDT 299;	//Diagnoseinformation im Lokalbereich / diag information in local area
+END_VAR
+BEGIN
+NETWORK
+TITLE =Initialisierung / Initialisation
+
+      L     #PNIODiag_GLOBDB; 
+      T     #GLOBDBNr; // Global-DB Nummer in word-format
+
+      U     #ErrorDB; 
+      R     #ErrorDB; // Error-Bit reset
+
+      L     0; 
+      T     #DIAG_INFO.SUM_SLAVES_DIAG; // Slaveanzahl reset
+
+NETWORK
+TITLE =Kontrolle Systemnummer / check system number  1..48
+//reserved for DP 1..32
+//reserved for PN 100..115,
+//all together a squence of 1..48 systems.
+//
+//Systemnummern für DP 1..32
+//Systemnummern für PN 100..115,
+//zusammen maximal 48 Systeme (DP+PN)
+      L     #SYSTEM_NR; 
+      L     1; 
+      <I    ; 
+      SPB   errS; // Systemnummer kleiner 1: Fehler / system no. < 1 : Error
+
+      TAK   ; 
+      L     48; // Systemnummer größer 48: Fehler / system no. > 48 : Error
+      <=I   ; 
+      SPB   norS; 
+
+errS: S     #ErrorsSysNr; 
+      BEA   ; // Abbruch bei falscher Systemnummer / quit if system no. is wrong
+
+norS: R     #ErrorsSysNr; // Reset Fehler: Systemnummer nicht erlaubt /  SystemNo. not allowed [1..48]
+NETWORK
+TITLE =Berechnen Min.größe Global-DB / calculating min. size Global-DB
+//Minimum Size of DNDIAG_GLOBDB is depending from number of system.
+//Any system needs 256 words.
+//
+//Die Minimalgröße des DNDIAG_GLOBDB ist abhängig von der Anzahl der Systeme.
+//Jedes System belegt 256 worte im Global-DB
+//
+//Adresse [Byte] = (Systemnummer-1) * 256 * 2Byte + (Stationsnummer-1) * 2Byte
+      L     #SYSTEM_NR; 
+      L     1; 
+      -I    ; 
+      L     256; 
+      *I    ; 
+      L     255; // Max. 256 Stationen / max. 256 stations supported
+      +I    ; 
+      SLW   1; 
+      T     #LaengeDB; // Erforderliche Global-DB Länge / necessary length of global DB
+NETWORK
+TITLE =Test Global-DB PNIODIAG_DB
+//PNIODIAG_DB will be generated from Siemens PNIODIAG function with PLC Startup,
+//default DB200 will be generated from FB126 called in OB100
+//
+//Der PNIODIAG_DB wird vom Siemens PNIODIAG FC im SPS-ANlauf erzeugt,
+//üblicherweise wird im OB100  der DB200 vom FB126 erzeugt.
+
+
+      CALL SFC   24 (
+           DB_NUMBER                := #GLOBDBNr,
+           RET_VAL                  := #RetValSFC,
+           DB_LENGTH                := #DB_LENGTH,
+           WRITE_PROT               := #WRITE_PROT);
+      NOP   0; 
+NETWORK
+TITLE =Fehler: PNDIAG_DB fehlt oder zu kurz / Error: PNDIAG_DB missing 
+//Quit if PNDIAG_DB DB-Error
+//
+//Abbruch wenn PNDIAG_DB DB - Fehler
+      U(    ; 
+      O(    ; 
+      L     #RetValSFC; 
+      L     0; 
+      <>I   ; 
+      )     ; 
+      O(    ; 
+      L     #DB_LENGTH; 
+      L     #LaengeDB; 
+      <=I   ; 
+      )     ; 
+      )     ; 
+      =     #ErrorDB; 
+      U     #ErrorDB; 
+      SAVE  ; 
+      BEB   ; 
+NETWORK
+TITLE =Berechen Anfangsadresse SystemNr. / calculation systemno. start
+//Every System needs 256 word = 512 byte inside Global-DB
+//
+//Jedes System belegt 256 Worte = 512 bytes im Global-DB
+//
+//
+//Adresse [Byte] = (Systemnummer-1) * 256 * 2Byte + (Stationsnummer-1) * 2Byte
+      L     #SYSTEM_NR; 
+      L     1; 
+      -I    ; 
+      L     512; 
+      *I    ; 
+      T     #System_Start; // Startadresse für Systemnummer / Start adress of system no.
+NETWORK
+TITLE =Pointer auf Info-Bereich (Lokal) / pointer to local "Info" area
+
+      L     P##DIAG_INFO; 
+      L     P#2.0; 
+      +D    ; 
+      T     #Info_PTR_NP; // Pointer Array "LIST_SLAVES_NOT_PRESENT"
+
+      L     P##DIAG_INFO; 
+      L     P#18.0; 
+      +D    ; 
+      T     #Info_PTR_ER; // Pointer Array "LIST_SLAVES_ERROR"
+
+      L     P##DIAG_INFO; 
+      L     P#34.0; 
+      +D    ; 
+      T     #Info_PTR_MSG; // Pointer Array "LIST_SLAVES_MSG"
+
+NETWORK
+TITLE =Teilnehmer 1..128 auswerten / Slaves 1..128 testing  => 0-127
+//Adresse [Byte] = (Systemnummer-1) * 256 * 2Byte + (Stationsnummer-1) * 2Byte
+//               = System_Start                   + LoopCNTR * 2
+//
+//Bit 0 OK
+//Bit 1 Maintenance
+//Bit 2 Gestört
+//Bit 3 Ausgefallen
+//Bit 4 Deaktiviert gewesen
+//Bit 5 DPV1
+//Bit 6 Maintenance gewesen
+//Bit 7 Gestört gewesen
+//Bit 8 Ausgefallen gewesen
+//Bit 9 Deaktiviert
+//Bit 10 bis 15 reserviert
+      AUF   DB [#GLOBDBNr]; // Global-DB von PNIODIAG öffnen / open global DB of PNIODIAG
+
+      L     0; 
+      T     #LoopCNTR; // Teilnehmer 1 = Bit 0  / Slave 1 is bit 0
+
+nxtT: L     #LoopCNTR; // Teilnehmer in Zälschleife überprüfen / check slaves in loop
+
+      SLW   1; // LoopCNTR * 2
+      L     #System_Start; 
+      +I    ; 
+      SLW   3; // Pointerformat
+      LAR1  ; 
+
+      SET   ; 
+      R     L [#Info_PTR_MSG]; // Init Ausfall oder Störung / nor present or error
+
+      U     DBX [AR1,P#1.3]; // Ausgefallen / not present
+      =     L [#Info_PTR_NP]; // Bit setzen "Teilnehmer ausgefallen" / indicate bit "not present"
+      S     L [#Info_PTR_MSG]; // Ausfall oder Störung / nor present or error
+
+      U     DBX [AR1,P#1.1]; // Maintenance   oder / or
+      U     DBX [AR1,P#1.2]; // gestört / error
+      =     L [#Info_PTR_ER]; // Bit setzen "Teilnehmer gestört" / indicate bit "error"
+      S     L [#Info_PTR_MSG]; // Ausfall oder Störung / nor present or error
+
+      UN    L [#Info_PTR_MSG]; 
+      SPB   kZae; // wenn keine Störung, nicht Zählen / if no fault, do not count
+
+      L     #DIAG_INFO.SUM_SLAVES_DIAG; 
+      L     1; 
+      +I    ; 
+      T     #DIAG_INFO.SUM_SLAVES_DIAG; // Summenzähler erhöhen / increase sum
+
+
+kZae: NOP   0; 
+      L     #Info_PTR_NP; // ausgefallen / lost
+      L     P#0.1; 
+      +D    ; 
+      T     #Info_PTR_NP; // Zeiger auf nächstes Bit im Info-Bereich / pointer to next bit in info - area
+
+      L     #Info_PTR_ER; // gestört / error
+      L     P#0.1; 
+      +D    ; 
+      T     #Info_PTR_ER; // Zeiger auf nächstes Bit im Info-Bereich / pointer to next bit in info - area
+
+      L     #Info_PTR_MSG; // betroffen / effected
+      L     P#0.1; 
+      +D    ; 
+      T     #Info_PTR_MSG; // Zeiger auf nächstes Bit im Info-Bereich / pointer to next bit in info - area
+
+
+      L     #LoopCNTR; // Zeiger auf nächsten Teilnehmer im Global-DB / pointer to next slave in global - DB
+      L     1; 
+      +I    ; 
+      T     #LoopCNTR; 
+      L     128; // wenn alle 128 Teilnehmer bearbeitet, Schleife ende / If all 128 slaves are testet, finish loop
+      <I    ; 
+      SPB   nxtT; 
+
+NETWORK
+TITLE =ANY für DIAGdaten bauen / create ANY for diagdata
+//The parameter "DIAG_DB" for diag - DB (target) is not a pointer but an UDT.
+//Therefore it is necessary to copy the missing values for "type" and "loop".
+//
+//Der Parameter "DIAG_DB" für den Diagnose - Ziel DB wird nicht als Pointer 
+//sondern als UDT übergeben, um die Parametrierung einfacher zu gestalten.
+//Daher müssen die fehlenden Argumente "Ddatentype" und "Wiederholfaktor" hinzu 
+//kopiert werden.
+      L     P##DIAG_DB; // UDT für Diagnosedaten / UDT dataset diagdata
+      LAR1  ; 
+      L     W [AR1,P#0.0]; 
+      T     #DataDBNo; 
+      L     W [AR1,P#2.0]; 
+      T     #DataArea; 
+      L     W [AR1,P#4.0]; 
+      T     #DataAdress; 
+
+      L     W#16#1002; // UDT enthält keinen Typ und Wiederholfaktor / UDT does not have type and loop
+      T     #DataType; // datatype = BYTE, 10h = S7
+      L     50; // Diagnosedatenfach hat 50 byte / length of data 50 byte
+      T     #DataLoop; 
+
+      L     P##P_Any_Diag; // Anypointer zu Diagnosedaten / anypointer target diagdata
+      LAR1  ; 
+      L     #DataType; 
+      T     LW [AR1,P#0.0]; 
+      L     #DataLoop; 
+      T     LW [AR1,P#2.0]; 
+      L     #DataDBNo; 
+      T     LW [AR1,P#4.0]; 
+      L     #DataArea; 
+      T     LW [AR1,P#6.0]; 
+      L     #DataAdress; 
+      T     LW [AR1,P#8.0]; 
+
+
+NETWORK
+TITLE =Lokaldatensatz in Ziel-DB kopieren / copy localdata to DiagDB
+
+
+
+      CALL SFC   20 (
+           SRCBLK                   := #DIAG_INFO,
+           RET_VAL                  := #RetValSFC,
+           DSTBLK                   := #P_Any_Diag);
+      NOP   0; 
+NETWORK
+TITLE =Baustein Ende / block end
+
+END_FUNCTION
+
